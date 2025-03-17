@@ -1,0 +1,13 @@
+# Ignore compiled binaries
+*.exe
+*.out
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+
+# Ignore build directories
+/build/
+/bin/
+/dist/
