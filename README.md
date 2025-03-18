@@ -15,4 +15,8 @@ g++ -DRUN_EXAMPLE -std=c++20 -O3 src/v3.cpp -o json_serializer_v3 -lbenchmark -p
 clang++ -std=c++23 -O3 src/v4.cpp -lbenchmark -o json_serializer_v4
 
 ./json_serializer_v4
+
+# If you experience an error with linking the benchmark library add:
+-I/usr/local/include -L/usr/local/lib
+# to the compile flags
 ```
