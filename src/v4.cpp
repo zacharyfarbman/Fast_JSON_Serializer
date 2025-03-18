@@ -125,7 +125,7 @@ constexpr const char* TEMPLATE =
 constexpr size_t TEMPLATE_SIZE = sizeof(TEMPLATE) - 1;
 
 // Pre-calculated field offsets in template
-constexpr FieldOffset METHOD_OFFSET = {23, 12};
+constexpr FieldOffset METHOD_OFFSET = {24, 12};
 constexpr FieldOffset ID_OFFSET = {42, 10};
 constexpr FieldOffset ACCESS_TOKEN_OFFSET = {76, 12};
 constexpr FieldOffset INSTRUMENT_OFFSET = {106, 12};
@@ -358,9 +358,6 @@ using place_schema = schema::object<
             schema::key_value<reduce_only_t, schema::boolean>,
             schema::key_value<time_in_force_t, schema::string<TIF_SIZE>>>>>;
 
-// 1. BASE BENCHMARKS - Testing core functionality
-
-// Original benchmark (retained)
 static void BM_PlaceOrderRequest(benchmark::State& state) {
   // Create the buffer and serializer outside the benchmark loop
   StaticBuffer<4096> buffer;
@@ -401,8 +398,6 @@ static void BM_PlaceOrderRequest(benchmark::State& state) {
   // Report bytes processed for throughput calculation
   state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
 }
-
-// 2. PAYLOAD SIZE BENCHMARKS - Testing with different string lengths
 
 static void BM_ShortStringPayload(benchmark::State& state) {
   StaticBuffer<4096> buffer;
@@ -470,8 +465,6 @@ static void BM_LongStringPayload(benchmark::State& state) {
   state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
 }
 
-// 3. NUMERIC VALUE BENCHMARKS - Testing different numeric representations
-
 static void BM_IntegerValues(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
@@ -528,12 +521,10 @@ static void BM_FloatingPointValues(benchmark::State& state) {
   state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
 }
 
-// 4. BUFFER SIZE BENCHMARKS - Testing with different buffer capacities
-
 template <size_t BufferSize>
 static void BM_BufferCapacity(benchmark::State& state) {
   // Skip if buffer is too small
-  if (BufferSize < TEMPLATE_SIZE + 50) {  // +50 for safety margin
+  if (BufferSize < TEMPLATE_SIZE) {  // +50 for safety margin
     state.SkipWithError("Buffer size too small for template");
     return;
   }
@@ -565,8 +556,6 @@ static void BM_BufferCapacity(benchmark::State& state) {
   state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
 }
 
-// 5. EDGE CASE BENCHMARKS - Testing boundary conditions
-
 static void BM_EdgeCaseValues(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
@@ -592,8 +581,6 @@ static void BM_EdgeCaseValues(benchmark::State& state) {
 
   state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
 }
-
-// 6. REPEATED FIELD UPDATES - Testing sequential updates to the same field
 
 static void BM_RepeatedFieldUpdates(benchmark::State& state) {
   StaticBuffer<4096> buffer;
@@ -628,9 +615,6 @@ static void BM_RepeatedFieldUpdates(benchmark::State& state) {
 
   state.SetBytesProcessed(int64_t(state.iterations()) * sizeof(double));
 }
-
-// 8. MULTI-MESSAGE BATCH BENCHMARK - Testing multiple serializations in
-// sequence
 
 static void BM_MultipleSerialization(benchmark::State& state) {
   // Number of JSON messages to generate in sequence
@@ -683,20 +667,13 @@ BENCHMARK(BM_ShortStringPayload);
 BENCHMARK(BM_LongStringPayload);
 BENCHMARK(BM_IntegerValues);
 BENCHMARK(BM_FloatingPointValues);
-// BENCHMARK(BM_BufferCapacity<256>);
+BENCHMARK(BM_BufferCapacity<256>);
 BENCHMARK(BM_BufferCapacity<1024>);
 BENCHMARK(BM_BufferCapacity<4096>);
 BENCHMARK(BM_BufferCapacity<16384>);
 BENCHMARK(BM_EdgeCaseValues);
 BENCHMARK(BM_RepeatedFieldUpdates);
 BENCHMARK(BM_MultipleSerialization)->Arg(1)->Arg(5)->Arg(10)->Arg(50);
-
-// Optional: Add complexity benchmarks to measure scaling behavior
-BENCHMARK(BM_PlaceOrderRequest)->Complexity(benchmark::oN);
-
-// Optional: Run benchmarks with different CPU frequencies to test thermal
-// impacts
-BENCHMARK(BM_PlaceOrderRequest)->MinWarmUpTime(2.0)->UseRealTime();
 
 int main(int argc, char** argv) {
   // Initialize benchmark
