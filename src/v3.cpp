@@ -100,6 +100,10 @@ class ALIGNED(64) Buffer {
     return std::string_view(data_.get(), size_);
   }
 
+  [[nodiscard]] FORCE_INLINE size_t capacity() const { return capacity_; }
+
+  [[nodiscard]] FORCE_INLINE size_t& size() { return size_; }
+
  private:
   std::unique_ptr<char[]> data_;
   size_t capacity_;
@@ -142,32 +146,6 @@ class DeribitJsonRpc {
 
   FORCE_INLINE void end_array() { buffer_.append(JSON_CLOSE_BRACKET); }
 
-  FORCE_INLINE void append_escaped_string(std::string_view value) {
-    buffer_.append(JSON_QUOTE);
-    for (char c : value) {
-      switch (c) {
-        case '"':
-          buffer_.append("\\\"", 2);
-          break;
-        case '\\':
-          buffer_.append("\\\\", 2);
-          break;
-        case '\n':
-          buffer_.append("\\n", 2);
-          break;
-        case '\r':
-          buffer_.append("\\r", 2);
-          break;
-        case '\t':
-          buffer_.append("\\t", 2);
-          break;
-        default:
-          buffer_.append(c);
-      }
-    }
-    buffer_.append(JSON_QUOTE);
-  }
-
   FORCE_INLINE void serialize(const char* key, std::string_view value) {
     write_key(key);
     append_escaped_string(value);
@@ -180,6 +158,12 @@ class DeribitJsonRpc {
   FORCE_INLINE void serialize(const char* key, const char* value) {
     write_key(key);
     append_escaped_string(std::string_view(value));
+  }
+
+  FORCE_INLINE void append_escaped_string(std::string_view value) {
+    buffer_.append(JSON_QUOTE);
+    buffer_.append(value.data(), value.size());
+    buffer_.append(JSON_QUOTE);
   }
 
   FORCE_INLINE void serialize(const char* key, double value) {
@@ -395,8 +379,8 @@ using CancelSchema =
     Schema<Field<DeribitCancelRequest, deribit::fields::ORDER_ID, std::string,
                  &DeribitCancelRequest::order_id>>;
 
-// Deribit API client class class
-ALIGNED(64) DeribitClient {
+// Deribit API client class
+class ALIGNED(64) DeribitClient {
  public:
   DeribitClient() : buffer_(8192), request_id_(1) {}
 
