@@ -1,17 +1,13 @@
 #include <benchmark/benchmark.h>
 
 #include <array>
-#include <atomic>
 #include <charconv>
-#include <chrono>
 #include <cstdint>
-#include <deque>
 #include <iostream>
 #include <memory>
 #include <random>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -538,7 +534,7 @@ static void BM_BufferAppendSmallString(benchmark::State& state) {
       buffer.append("small_string", 12);
     }
     benchmark::DoNotOptimize(buffer.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 BENCHMARK(BM_BufferAppendSmallString);
@@ -556,7 +552,7 @@ static void BM_BufferAppendLargeString(benchmark::State& state) {
 
     buffer.append(large_string.c_str(), large_string.size());
     benchmark::DoNotOptimize(buffer.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 BENCHMARK(BM_BufferAppendLargeString)->RangeMultiplier(4)->Range(64, 16384);
@@ -577,7 +573,7 @@ static void BM_SerializeString(benchmark::State& state) {
     rpc.end_object();
 
     benchmark::DoNotOptimize(buffer.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 BENCHMARK(BM_SerializeString)->RangeMultiplier(2)->Range(8, 1024);
@@ -596,7 +592,7 @@ static void BM_SerializeNumeric(benchmark::State& state) {
     rpc.end_object();
 
     benchmark::DoNotOptimize(buffer.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 BENCHMARK(BM_SerializeNumeric)->RangeMultiplier(10)->Range(1, 1000000000);
@@ -609,7 +605,7 @@ static void BM_SchemaBasedSerialization(benchmark::State& state) {
   for (auto _ : state) {
     auto result = client.create_buy_request(req);
     benchmark::DoNotOptimize(result.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 BENCHMARK(BM_SchemaBasedSerialization);
@@ -622,7 +618,7 @@ static void BM_ManualSerialization(benchmark::State& state) {
   for (auto _ : state) {
     auto result = client.create_buy_request_manual(req);
     benchmark::DoNotOptimize(result.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 BENCHMARK(BM_ManualSerialization);
@@ -647,7 +643,7 @@ BENCHMARK_F(DeribitBenchmark, BM_BuyRequest)(benchmark::State& state) {
   for (auto _ : state) {
     auto result = client.create_buy_request(buy_req);
     benchmark::DoNotOptimize(result.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 
@@ -656,7 +652,7 @@ BENCHMARK_F(DeribitBenchmark, BM_SellRequest)(benchmark::State& state) {
   for (auto _ : state) {
     auto result = client.create_sell_request(buy_req);
     benchmark::DoNotOptimize(result.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 
@@ -665,7 +661,7 @@ BENCHMARK_F(DeribitBenchmark, BM_EditRequest)(benchmark::State& state) {
   for (auto _ : state) {
     auto result = client.create_edit_request(edit_req);
     benchmark::DoNotOptimize(result.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 
@@ -674,7 +670,7 @@ BENCHMARK_F(DeribitBenchmark, BM_CancelRequest)(benchmark::State& state) {
   for (auto _ : state) {
     auto result = client.create_cancel_request(cancel_req);
     benchmark::DoNotOptimize(result.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 
@@ -683,7 +679,7 @@ BENCHMARK_F(DeribitBenchmark, BM_GetPositionsRequest)(benchmark::State& state) {
   for (auto _ : state) {
     auto result = client.create_get_positions_request();
     benchmark::DoNotOptimize(result.data());
-    benchmark::ClobberMemory();
+    // benchmark::ClobberMemory();
   }
 }
 
