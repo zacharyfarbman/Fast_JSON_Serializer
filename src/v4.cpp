@@ -5,10 +5,8 @@
 #include <cstring>
 #include <string_view>
 
-// String view type alias
 using SV = std::string_view;
 
-// Force inline directive
 #define FORCE_INLINE inline __attribute__((always_inline))
 
 template <size_t Capacity>
