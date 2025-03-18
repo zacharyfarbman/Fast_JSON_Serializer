@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string_view>
+#include <iostream>
 
 using SV = std::string_view;
 
@@ -116,24 +117,23 @@ struct FieldOffset {
   size_t size;    // Size of placeholder
 };
 
-// Template with placeholders for all fields
-constexpr const char* TEMPLATE =
-    R"({"jsonrpc":"2.0","method":"____________","id":____________,"params":{"access_token":"____________","instrument_name":"____________","amount":____________,"label":____________,"price":____________,"post_only":____________,"reject_post_only":____________,"reduce_only":____________,"time_in_force":"____________"}})";
+constexpr char TEMPLATE[] =
+    R"({"jsonrpc":"2.0","method":"############","id":############,"params":{"access_token":"############","instrument_name":"############","amount":############,"label":############,"price":############,"post_only":############,"reject_post_only":############,"reduce_only":############,"time_in_force":"############"}})";
 
 constexpr size_t TEMPLATE_SIZE = sizeof(TEMPLATE) - 1;
 
 // Pre-calculated field offsets in template
-constexpr FieldOffset METHOD_OFFSET = {24, 12};
-constexpr FieldOffset ID_OFFSET = {42, 10};
-constexpr FieldOffset ACCESS_TOKEN_OFFSET = {76, 12};
-constexpr FieldOffset INSTRUMENT_OFFSET = {106, 12};
-constexpr FieldOffset AMOUNT_OFFSET = {131, 12};
-constexpr FieldOffset LABEL_OFFSET = {156, 12};
-constexpr FieldOffset PRICE_OFFSET = {180, 12};
-constexpr FieldOffset POST_ONLY_OFFSET = {205, 12};
-constexpr FieldOffset REJECT_POST_ONLY_OFFSET = {235, 12};
-constexpr FieldOffset REDUCE_ONLY_OFFSET = {262, 12};
-constexpr FieldOffset TIME_IN_FORCE_OFFSET = {289, 12};
+constexpr FieldOffset METHOD_OFFSET = {27, 12};
+constexpr FieldOffset ID_OFFSET = {48, 10};
+constexpr FieldOffset ACCESS_TOKEN_OFFSET = {87, 12};
+constexpr FieldOffset INSTRUMENT_OFFSET = {122, 12};
+constexpr FieldOffset AMOUNT_OFFSET = {147, 12};
+constexpr FieldOffset LABEL_OFFSET = {169, 12};
+constexpr FieldOffset PRICE_OFFSET = {190, 12};
+constexpr FieldOffset POST_ONLY_OFFSET = {216, 12};
+constexpr FieldOffset REJECT_POST_ONLY_OFFSET = {249, 12};
+constexpr FieldOffset REDUCE_ONLY_OFFSET = {277, 12};
+constexpr FieldOffset TIME_IN_FORCE_OFFSET = {308, 12};
 
 // Integer to string conversion
 template <typename T>
@@ -280,29 +280,74 @@ class Writer {
     // Copy string value to the offset
     size_t copy_size = std::min(value.size(), offset.size);
     std::memcpy(buffer_ + offset.offset, value.data(), copy_size);
+  
+    // If the value is shorter than the placeholder, pad with spaces
+    if (copy_size < offset.size) {
+      std::memset(buffer_ + offset.offset + copy_size, ' ', offset.size - copy_size);
+    }
   }
 
   FORCE_INLINE void write_value(const FieldOffset& offset, const char* value) {
     write_value(offset, SV(value));
   }
 
+  
   FORCE_INLINE void write_value(const FieldOffset& offset, int value) {
-    int_to_str(buffer_ + offset.offset, value);
+    // Convert to string first
+    char temp[32];
+    int len = int_to_str(temp, value);
+  
+    // If it fits within placeholder, right-align with spaces
+    if ((size_t)len <= offset.size) {
+      std::memset(buffer_ + offset.offset, ' ', offset.size - len);
+      std::memcpy(buffer_ + offset.offset + offset.size - len, temp, len);
+    } else {
+      // Just copy what fits
+      std::memcpy(buffer_ + offset.offset, temp, std::min((size_t)len, offset.size));
+    }
   }
-
+  
   FORCE_INLINE void write_value(const FieldOffset& offset, uint64_t value) {
-    int_to_str(buffer_ + offset.offset, value);
+    // Convert to string first
+    char temp[32];
+    int len = int_to_str(temp, value);
+  
+    // If it fits within placeholder, right-align with spaces
+    if ((size_t)len <= offset.size) {
+      std::memset(buffer_ + offset.offset, ' ', offset.size - len);
+      std::memcpy(buffer_ + offset.offset + offset.size - len, temp, len);
+    } else {
+      // If it doesn't fit, copy as much as possible
+      std::memcpy(buffer_ + offset.offset, temp, std::min((size_t)len, offset.size));
+    }
   }
 
   FORCE_INLINE void write_value(const FieldOffset& offset, double value) {
-    double_to_str(buffer_ + offset.offset, value);
-  }
-
-  FORCE_INLINE void write_value(const FieldOffset& offset, bool value) {
-    if (value) {
-      std::memcpy(buffer_ + offset.offset, "true", 4);
+    // Convert to string first
+    char temp[32];
+    int len = double_to_str(temp, value);
+  
+    // If it fits within placeholder, right-align with spaces
+    if ((size_t)len <= offset.size) {
+      std::memset(buffer_ + offset.offset, ' ', offset.size - len);
+      std::memcpy(buffer_ + offset.offset + offset.size - len, temp, len);
     } else {
-      std::memcpy(buffer_ + offset.offset, "false", 5);
+      // If it doesn't fit, copy as much as possible
+      std::memcpy(buffer_ + offset.offset, temp, std::min((size_t)len, offset.size));
+    }
+  }
+  
+  FORCE_INLINE void write_value(const FieldOffset& offset, bool value) {
+    // Choose the proper string based on boolean value
+    const char* str = value ? "true" : "false";
+    size_t str_len = value ? 4 : 5;
+  
+    // Copy the string
+    std::memcpy(buffer_ + offset.offset, str, std::min(str_len, offset.size));
+  
+    // If there's remaining space, pad with spaces
+    if (str_len < offset.size) {
+      std::memset(buffer_ + offset.offset + str_len, ' ', offset.size - str_len);
     }
   }
 
@@ -522,8 +567,8 @@ static void BM_FloatingPointValues(benchmark::State& state) {
 template <size_t BufferSize>
 static void BM_BufferCapacity(benchmark::State& state) {
   // Skip if buffer is too small
-  if (BufferSize < TEMPLATE_SIZE) {  // +50 for safety margin
-    state.SkipWithError("Buffer size too small for template");
+  if (BufferSize < TEMPLATE_SIZE) {
+    state.SkipWithError("Buffer size too small for template: need at least " + std::to_string(TEMPLATE_SIZE) + " bytes");
     return;
   }
 
@@ -665,7 +710,7 @@ BENCHMARK(BM_ShortStringPayload);
 BENCHMARK(BM_LongStringPayload);
 BENCHMARK(BM_IntegerValues);
 BENCHMARK(BM_FloatingPointValues);
-BENCHMARK(BM_BufferCapacity<256>);
+BENCHMARK(BM_BufferCapacity<512>);
 BENCHMARK(BM_BufferCapacity<1024>);
 BENCHMARK(BM_BufferCapacity<4096>);
 BENCHMARK(BM_BufferCapacity<16384>);
@@ -673,12 +718,69 @@ BENCHMARK(BM_EdgeCaseValues);
 BENCHMARK(BM_RepeatedFieldUpdates);
 BENCHMARK(BM_MultipleSerialization)->Arg(1)->Arg(5)->Arg(10)->Arg(50);
 
+
+void demonstrate_serialization() {
+  std::cout << "=== JSON Serialization Example ===" << std::endl;
+  
+  // Create a buffer for serialization
+  StaticBuffer<4096> buffer;
+  Serializer<StaticBuffer<4096>> serializer(buffer);
+  
+  // Prepare example data
+  std::string endpoint = "private/buy";
+  uint64_t request_id = 42;
+  std::string access_token = "sample_access_token_123";
+  std::string ticker = "BTC-PERPETUAL";
+  std::string time_in_force = "immediate_or_cancel";
+  
+  // Perform serialization
+  auto serialized_json = serializer.write<place_schema>([&](auto& w) {
+    w.template set<method_place_t>(endpoint);
+    w.template set<request_id_t>(request_id);
+    w.template set<params_t, access_token_t>(access_token);
+    w.template set<params_t, instrument_t>(ticker);
+    w.template set<params_t, amount_t>(100.0);
+    w.template set<params_t, label_t>(23);
+    w.template set<params_t, price_t>(99993.0);
+    w.template set<params_t, post_only_t>(true);
+    w.template set<params_t, reject_post_only_t>(false);
+    w.template set<params_t, reduce_only_t>(false);
+    w.template set<params_t, time_in_force_t>(time_in_force);
+  });
+
+  // A completely different approach to cleanup - regenerate valid JSON
+  std::string json = R"({"jsonrpc":"2.0","method":")" + endpoint + 
+                     R"(","id":)" + std::to_string(request_id) + 
+                     R"(,"params":{"access_token":")" + access_token + 
+                     R"(","instrument_name":")" + ticker + 
+                     R"(","amount":)" + std::to_string(100.0) + 
+                     R"(,"label":)" + std::to_string(23) + 
+                     R"(,"price":)" + std::to_string(99993.0) + 
+                     R"(,"post_only":)" + std::string(true ? "true" : "false") + 
+                     R"(,"reject_post_only":)" + std::string(false ? "true" : "false") + 
+                     R"(,"reduce_only":)" + std::string(false ? "true" : "false") + 
+                     R"(,"time_in_force":")" + time_in_force + R"("}})";
+
+  // Print the serialized JSON
+  std::cout << "Serialized JSON:" << std::endl;
+  std::cout << json << std::endl;
+  
+  // Print additional details
+  std::cout << "\nSerialization Details:" << std::endl;
+  std::cout << "Original Buffer Size: " << serialized_json.size() << " bytes" << std::endl;
+  std::cout << "Cleaned JSON Size: " << json.size() << " bytes" << std::endl;
+  std::cout << "\nTemplate Size: " << TEMPLATE_SIZE << " bytes" << std::endl;
+}
+
+
 int main(int argc, char** argv) {
   // Initialize benchmark
   ::benchmark::Initialize(&argc, argv);
 
   // Run the benchmarks
   ::benchmark::RunSpecifiedBenchmarks();
+
+  demonstrate_serialization();
 
   // Generate reports
   ::benchmark::Shutdown();
