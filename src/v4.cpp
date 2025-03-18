@@ -748,7 +748,6 @@ void demonstrate_serialization() {
     w.template set<params_t, time_in_force_t>(time_in_force);
   });
 
-  // A completely different approach to cleanup - regenerate valid JSON
   std::string json = R"({"jsonrpc":"2.0","method":")" + endpoint + 
                      R"(","id":)" + std::to_string(request_id) + 
                      R"(,"params":{"access_token":")" + access_token + 
