@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <string_view>
 #include <iostream>
+#include <string_view>
 
 using SV = std::string_view;
 
@@ -74,6 +74,9 @@ struct reduce_only_t {
 struct time_in_force_t {
   constexpr static const char* name = "time_in_force";
 };
+struct order_id_t {
+  constexpr static const char* name = "order_id";
+};
 
 namespace schema {
 // String type with maximum size
@@ -122,6 +125,16 @@ constexpr char TEMPLATE[] =
 
 constexpr size_t TEMPLATE_SIZE = sizeof(TEMPLATE) - 1;
 
+constexpr char CANCEL_TEMPLATE[] =
+    R"({"jsonrpc":"2.0","method":"############","id":############,"params":{"access_token":"############","order_id":"############"}})";
+
+constexpr size_t CANCEL_TEMPLATE_SIZE = sizeof(CANCEL_TEMPLATE) - 1;
+
+constexpr char EDIT_TEMPLATE[] =
+    R"({"jsonrpc":"2.0","method":"############","id":############,"params":{"access_token":"############","order_id":"############","amount":############,"price":############,"post_only":############,"reduce_only":############}})";
+
+constexpr size_t EDIT_TEMPLATE_SIZE = sizeof(EDIT_TEMPLATE) - 1;
+
 // Pre-calculated field offsets in template
 constexpr FieldOffset METHOD_OFFSET = {27, 12};
 constexpr FieldOffset ID_OFFSET = {48, 10};
@@ -134,6 +147,12 @@ constexpr FieldOffset POST_ONLY_OFFSET = {216, 12};
 constexpr FieldOffset REJECT_POST_ONLY_OFFSET = {249, 12};
 constexpr FieldOffset REDUCE_ONLY_OFFSET = {277, 12};
 constexpr FieldOffset TIME_IN_FORCE_OFFSET = {308, 12};
+constexpr FieldOffset CANCEL_ORDER_ID_OFFSET = {114, 12};
+constexpr FieldOffset EDIT_ORDER_ID_OFFSET = {114, 12};
+constexpr FieldOffset EDIT_AMOUNT_OFFSET = {139, 12};
+constexpr FieldOffset EDIT_PRICE_OFFSET = {160, 12};
+constexpr FieldOffset EDIT_POST_ONLY_OFFSET = {186, 12};
+constexpr FieldOffset EDIT_REDUCE_ONLY_OFFSET = {214, 12};
 
 // Integer to string conversion
 template <typename T>
@@ -280,10 +299,11 @@ class Writer {
     // Copy string value to the offset
     size_t copy_size = std::min(value.size(), offset.size);
     std::memcpy(buffer_ + offset.offset, value.data(), copy_size);
-  
+
     // If the value is shorter than the placeholder, pad with spaces
     if (copy_size < offset.size) {
-      std::memset(buffer_ + offset.offset + copy_size, ' ', offset.size - copy_size);
+      std::memset(buffer_ + offset.offset + copy_size, ' ',
+                  offset.size - copy_size);
     }
   }
 
@@ -291,67 +311,76 @@ class Writer {
     write_value(offset, SV(value));
   }
 
-  
   FORCE_INLINE void write_value(const FieldOffset& offset, int value) {
     // Convert to string first
     char temp[32];
     int len = int_to_str(temp, value);
-  
+
     // If it fits within placeholder, right-align with spaces
     if ((size_t)len <= offset.size) {
       std::memset(buffer_ + offset.offset, ' ', offset.size - len);
       std::memcpy(buffer_ + offset.offset + offset.size - len, temp, len);
     } else {
-      // Just copy what fits
-      std::memcpy(buffer_ + offset.offset, temp, std::min((size_t)len, offset.size));
+      std::memcpy(buffer_ + offset.offset, temp,
+                  std::min((size_t)len, offset.size));
     }
   }
-  
+
   FORCE_INLINE void write_value(const FieldOffset& offset, uint64_t value) {
-    // Convert to string first
     char temp[32];
     int len = int_to_str(temp, value);
-  
-    // If it fits within placeholder, right-align with spaces
+
     if ((size_t)len <= offset.size) {
       std::memset(buffer_ + offset.offset, ' ', offset.size - len);
       std::memcpy(buffer_ + offset.offset + offset.size - len, temp, len);
     } else {
-      // If it doesn't fit, copy as much as possible
-      std::memcpy(buffer_ + offset.offset, temp, std::min((size_t)len, offset.size));
+      std::memcpy(buffer_ + offset.offset, temp,
+                  std::min((size_t)len, offset.size));
     }
   }
 
   FORCE_INLINE void write_value(const FieldOffset& offset, double value) {
-    // Convert to string first
     char temp[32];
     int len = double_to_str(temp, value);
-  
-    // If it fits within placeholder, right-align with spaces
+
     if ((size_t)len <= offset.size) {
       std::memset(buffer_ + offset.offset, ' ', offset.size - len);
       std::memcpy(buffer_ + offset.offset + offset.size - len, temp, len);
     } else {
-      // If it doesn't fit, copy as much as possible
-      std::memcpy(buffer_ + offset.offset, temp, std::min((size_t)len, offset.size));
+      std::memcpy(buffer_ + offset.offset, temp,
+                  std::min((size_t)len, offset.size));
     }
   }
-  
+
   FORCE_INLINE void write_value(const FieldOffset& offset, bool value) {
     // Choose the proper string based on boolean value
     const char* str = value ? "true" : "false";
     size_t str_len = value ? 4 : 5;
-  
+
     // Copy the string
     std::memcpy(buffer_ + offset.offset, str, std::min(str_len, offset.size));
-  
+
     // If there's remaining space, pad with spaces
     if (str_len < offset.size) {
-      std::memset(buffer_ + offset.offset + str_len, ' ', offset.size - str_len);
+      std::memset(buffer_ + offset.offset + str_len, ' ',
+                  offset.size - str_len);
     }
   }
 
   char* buffer_;
+};
+
+template <typename Schema, typename BufferType>
+struct WriteImpl {
+  static FORCE_INLINE SV write(BufferType& buffer, auto&& callback) {
+    // Default implementation (for place_schema)
+    buffer.clear();
+    std::memcpy(buffer.data(), TEMPLATE, TEMPLATE_SIZE);
+    buffer.set_size(TEMPLATE_SIZE);
+    Writer<Schema> writer(buffer.data());
+    callback(writer);
+    return buffer.view();
+  }
 };
 
 template <typename BufferType>
@@ -361,18 +390,9 @@ class Serializer {
 
   template <typename Schema, typename Callback>
   FORCE_INLINE SV write(Callback&& callback) {
-    // Reset buffer
-    buffer_.clear();
-
-    // Copy template to buffer
-    std::memcpy(buffer_.data(), TEMPLATE, TEMPLATE_SIZE);
-    buffer_.set_size(TEMPLATE_SIZE);
-
-    // Create writer and call callback
-    Writer<Schema> writer(buffer_.data());
-    callback(writer);
-
-    return buffer_.view();
+    // Use the helper struct to select the right implementation
+    return WriteImpl<Schema, BufferType>::write(
+        buffer_, std::forward<Callback>(callback));
   }
 
  private:
@@ -384,6 +404,7 @@ constexpr int ACCESS_TKN_SIZE = 400;
 constexpr int INSTRUMENT_SIZE = 35;
 constexpr int TIF_SIZE = 19;
 
+// Forward declare the schema types
 using place_schema = schema::object<
     schema::fixed_key_value<jsonrpc_t>,
     schema::key_value<method_place_t, schema::string<METHOD_PLACE_SIZE>>,
@@ -401,24 +422,173 @@ using place_schema = schema::object<
             schema::key_value<reduce_only_t, schema::boolean>,
             schema::key_value<time_in_force_t, schema::string<TIF_SIZE>>>>>;
 
-static void BM_PlaceOrderRequest(benchmark::State& state) {
-  // Create the buffer and serializer outside the benchmark loop
+using cancel_schema = schema::object<
+    schema::fixed_key_value<jsonrpc_t>,
+    schema::key_value<method_place_t, schema::string<METHOD_PLACE_SIZE>>,
+    schema::key_value<request_id_t, schema::number<uint64_t>>,
+    schema::key_value<
+        params_t,
+        schema::object<
+            schema::key_value<access_token_t, schema::string<ACCESS_TKN_SIZE>>,
+            schema::key_value<order_id_t, schema::string<METHOD_PLACE_SIZE>>>>>;
+
+using edit_schema = schema::object<
+    schema::fixed_key_value<jsonrpc_t>,
+    schema::key_value<method_place_t, schema::string<METHOD_PLACE_SIZE>>,
+    schema::key_value<request_id_t, schema::number<uint64_t>>,
+    schema::key_value<
+        params_t,
+        schema::object<
+            schema::key_value<access_token_t, schema::string<ACCESS_TKN_SIZE>>,
+            schema::key_value<order_id_t, schema::string<METHOD_PLACE_SIZE>>,
+            schema::key_value<amount_t, schema::number<double>>,
+            schema::key_value<price_t, schema::number<double>>,
+            schema::key_value<post_only_t, schema::boolean>,
+            schema::key_value<reduce_only_t, schema::boolean>>>>;
+
+// Specialization for cancel_schema
+template <typename BufferType>
+struct WriteImpl<cancel_schema, BufferType> {
+  static FORCE_INLINE SV write(BufferType& buffer, auto&& callback) {
+    buffer.clear();
+    std::memcpy(buffer.data(), CANCEL_TEMPLATE, CANCEL_TEMPLATE_SIZE);
+    buffer.set_size(CANCEL_TEMPLATE_SIZE);
+    Writer<cancel_schema> writer(buffer.data());
+    callback(writer);
+    return buffer.view();
+  }
+};
+
+// Specialization for edit_schema
+template <typename BufferType>
+struct WriteImpl<edit_schema, BufferType> {
+  static FORCE_INLINE SV write(BufferType& buffer, auto&& callback) {
+    buffer.clear();
+    std::memcpy(buffer.data(), EDIT_TEMPLATE, EDIT_TEMPLATE_SIZE);
+    buffer.set_size(EDIT_TEMPLATE_SIZE);
+    Writer<edit_schema> writer(buffer.data());
+    callback(writer);
+    return buffer.view();
+  }
+};
+
+template <>
+template <typename ParentTag, typename ChildTag>
+constexpr FieldOffset Writer<cancel_schema>::get_nested_offset() {
+  if constexpr (std::is_same_v<ParentTag, params_t>) {
+    if constexpr (std::is_same_v<ChildTag, access_token_t>) {
+      return ACCESS_TOKEN_OFFSET;  // Reuse existing offset
+    } else if constexpr (std::is_same_v<ChildTag, order_id_t>) {
+      return CANCEL_ORDER_ID_OFFSET;  // Cancel-specific offset
+    } else {
+      static_assert(!std::is_same_v<ParentTag, params_t>,
+                    "Unsupported child tag for params in cancel schema");
+      return {0, 0};
+    }
+  } else {
+    static_assert(!std::is_same_v<ParentTag, params_t>,
+                  "Unsupported parent tag for cancel schema");
+    return {0, 0};
+  }
+}
+
+template <>
+template <typename ParentTag, typename ChildTag>
+constexpr FieldOffset Writer<edit_schema>::get_nested_offset() {
+  if constexpr (std::is_same_v<ParentTag, params_t>) {
+    if constexpr (std::is_same_v<ChildTag, access_token_t>) {
+      return ACCESS_TOKEN_OFFSET;  // Reuse existing offset
+    } else if constexpr (std::is_same_v<ChildTag, order_id_t>) {
+      return EDIT_ORDER_ID_OFFSET;
+    } else if constexpr (std::is_same_v<ChildTag, amount_t>) {
+      return EDIT_AMOUNT_OFFSET;
+    } else if constexpr (std::is_same_v<ChildTag, price_t>) {
+      return EDIT_PRICE_OFFSET;
+    } else if constexpr (std::is_same_v<ChildTag, post_only_t>) {
+      return EDIT_POST_ONLY_OFFSET;
+    } else if constexpr (std::is_same_v<ChildTag, reduce_only_t>) {
+      return EDIT_REDUCE_ONLY_OFFSET;
+    } else {
+      static_assert(!std::is_same_v<ParentTag, params_t>,
+                    "Unsupported child tag for params in edit schema");
+      return {0, 0};
+    }
+  } else {
+    static_assert(!std::is_same_v<ParentTag, params_t>,
+                  "Unsupported parent tag for edit schema");
+    return {0, 0};
+  }
+}
+
+static void BM_CancelOrderRequest(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
 
-  // Define test data
+  std::string endpoint = "private/cancel";
+  uint64_t request_id = 42;
+  std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
+  std::string order_id = "ETH-281234";
+
+  for (auto _ : state) {
+    buffer.clear();
+
+    serializer.write<cancel_schema>([&](auto& w) {
+      w.template set<method_place_t>(endpoint);
+      w.template set<request_id_t>(request_id);
+      w.template set<params_t, access_token_t>(access_token);
+      w.template set<params_t, order_id_t>(order_id);
+    });
+
+    benchmark::DoNotOptimize(buffer.data());
+    benchmark::DoNotOptimize(buffer.size());
+  }
+
+  state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
+}
+
+static void BM_EditOrderRequest(benchmark::State& state) {
+  StaticBuffer<4096> buffer;
+  Serializer<StaticBuffer<4096>> serializer(buffer);
+
+  std::string endpoint = "private/edit";
+  uint64_t request_id = 43;
+  std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
+  std::string order_id = "ETH-281234";
+
+  for (auto _ : state) {
+    buffer.clear();
+
+    serializer.write<edit_schema>([&](auto& w) {
+      w.template set<method_place_t>(endpoint);
+      w.template set<request_id_t>(request_id);
+      w.template set<params_t, access_token_t>(access_token);
+      w.template set<params_t, order_id_t>(order_id);
+      w.template set<params_t, amount_t>(150.0);
+      w.template set<params_t, price_t>(98765.0);
+      w.template set<params_t, post_only_t>(true);
+      w.template set<params_t, reduce_only_t>(false);
+    });
+
+    benchmark::DoNotOptimize(buffer.data());
+    benchmark::DoNotOptimize(buffer.size());
+  }
+
+  state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
+}
+
+static void BM_PlaceOrderRequest(benchmark::State& state) {
+  StaticBuffer<4096> buffer;
+  Serializer<StaticBuffer<4096>> serializer(buffer);
+
   std::string endpoint = "private/buy";
   uint64_t request_id = 17;
   std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
   std::string ticker = "BTC-PERPETUAL";
   std::string time_in_force = "immediate_or_cancel";
 
-  // Benchmark loop
   for (auto _ : state) {
-    // Clear buffer between iterations
     buffer.clear();
 
-    // Perform serialization using the schema
     serializer.write<place_schema>([&](auto& w) {
       w.template set<method_place_t>(endpoint);
       w.template set<request_id_t>(request_id);
@@ -433,12 +603,10 @@ static void BM_PlaceOrderRequest(benchmark::State& state) {
       w.template set<params_t, time_in_force_t>(time_in_force);
     });
 
-    // Prevent compiler optimization
     benchmark::DoNotOptimize(buffer.data());
     benchmark::DoNotOptimize(buffer.size());
   }
 
-  // Report bytes processed for throughput calculation
   state.SetBytesProcessed(int64_t(state.iterations()) * int64_t(buffer.size()));
 }
 
@@ -446,7 +614,6 @@ static void BM_ShortStringPayload(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
 
-  // Short strings (typical for most fields)
   std::string endpoint = "private/buy";
   std::string access_token = "short_token";
   std::string ticker = "BTC-PERP";
@@ -477,7 +644,6 @@ static void BM_LongStringPayload(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
 
-  // Long string for access token (simulating a JWT or similar)
   std::string endpoint = "private/buy";
   std::string access_token =
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
@@ -512,7 +678,6 @@ static void BM_IntegerValues(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
 
-  // Test with integer values
   std::string endpoint = "private/buy";
   uint64_t request_id = 9999999999;  // Large integer
 
@@ -541,7 +706,6 @@ static void BM_FloatingPointValues(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
 
-  // Test with floating point values
   for (auto _ : state) {
     buffer.clear();
     serializer.template write<place_schema>([&](auto& w) {
@@ -568,7 +732,8 @@ template <size_t BufferSize>
 static void BM_BufferCapacity(benchmark::State& state) {
   // Skip if buffer is too small
   if (BufferSize < TEMPLATE_SIZE) {
-    state.SkipWithError("Buffer size too small for template: need at least " + std::to_string(TEMPLATE_SIZE) + " bytes");
+    state.SkipWithError("Buffer size too small for template: need at least " +
+                        std::to_string(TEMPLATE_SIZE) + " bytes");
     return;
   }
 
@@ -603,7 +768,6 @@ static void BM_EdgeCaseValues(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
 
-  // Edge case values
   for (auto _ : state) {
     buffer.clear();
     serializer.template write<place_schema>([&](auto& w) {
@@ -629,7 +793,6 @@ static void BM_RepeatedFieldUpdates(benchmark::State& state) {
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
 
-  // Prepare the basic template
   buffer.clear();
   serializer.template write<place_schema>([&](auto& w) {
     w.template set<method_place_t>("private/buy");
@@ -663,19 +826,16 @@ static void BM_MultipleSerialization(benchmark::State& state) {
   // Number of JSON messages to generate in sequence
   const int count = state.range(0);
 
-  // Pre-allocate buffers
   std::vector<StaticBuffer<4096>> buffers(count);
   std::vector<Serializer<StaticBuffer<4096>>> serializers;
   for (int i = 0; i < count; i++) {
     serializers.emplace_back(Serializer<StaticBuffer<4096>>(buffers[i]));
   }
 
-  // Test data
   std::string endpoint = "private/buy";
   std::string access_token = "token";
 
   for (auto _ : state) {
-    // Generate multiple JSON messages in sequence
     for (int i = 0; i < count; i++) {
       buffers[i].clear();
 
@@ -704,8 +864,9 @@ static void BM_MultipleSerialization(benchmark::State& state) {
                           int64_t(count));  // Count messages as items
 }
 
-// Register all benchmarks
 BENCHMARK(BM_PlaceOrderRequest);
+BENCHMARK(BM_CancelOrderRequest);
+BENCHMARK(BM_EditOrderRequest);
 BENCHMARK(BM_ShortStringPayload);
 BENCHMARK(BM_LongStringPayload);
 BENCHMARK(BM_IntegerValues);
@@ -718,22 +879,18 @@ BENCHMARK(BM_EdgeCaseValues);
 BENCHMARK(BM_RepeatedFieldUpdates);
 BENCHMARK(BM_MultipleSerialization)->Arg(1)->Arg(5)->Arg(10)->Arg(50);
 
-
-void demonstrate_serialization() {
+void demonstrate_place_order() {
   std::cout << "=== JSON Serialization Example ===" << std::endl;
-  
-  // Create a buffer for serialization
+
   StaticBuffer<4096> buffer;
   Serializer<StaticBuffer<4096>> serializer(buffer);
-  
-  // Prepare example data
+
   std::string endpoint = "private/buy";
   uint64_t request_id = 42;
   std::string access_token = "sample_access_token_123";
   std::string ticker = "BTC-PERPETUAL";
   std::string time_in_force = "immediate_or_cancel";
-  
-  // Perform serialization
+
   auto serialized_json = serializer.write<place_schema>([&](auto& w) {
     w.template set<method_place_t>(endpoint);
     w.template set<request_id_t>(request_id);
@@ -748,40 +905,107 @@ void demonstrate_serialization() {
     w.template set<params_t, time_in_force_t>(time_in_force);
   });
 
-  std::string json = R"({"jsonrpc":"2.0","method":")" + endpoint + 
-                     R"(","id":)" + std::to_string(request_id) + 
-                     R"(,"params":{"access_token":")" + access_token + 
-                     R"(","instrument_name":")" + ticker + 
-                     R"(","amount":)" + std::to_string(100.0) + 
-                     R"(,"label":)" + std::to_string(23) + 
-                     R"(,"price":)" + std::to_string(99993.0) + 
-                     R"(,"post_only":)" + std::string(true ? "true" : "false") + 
-                     R"(,"reject_post_only":)" + std::string(false ? "true" : "false") + 
-                     R"(,"reduce_only":)" + std::string(false ? "true" : "false") + 
-                     R"(,"time_in_force":")" + time_in_force + R"("}})";
+  std::string json =
+      R"({"jsonrpc":"2.0","method":")" + endpoint + R"(","id":)" +
+      std::to_string(request_id) + R"(,"params":{"access_token":")" +
+      access_token + R"(","instrument_name":")" + ticker + R"(","amount":)" +
+      std::to_string(100.0) + R"(,"label":)" + std::to_string(23) +
+      R"(,"price":)" + std::to_string(99993.0) + R"(,"post_only":)" +
+      std::string(true ? "true" : "false") + R"(,"reject_post_only":)" +
+      std::string(false ? "true" : "false") + R"(,"reduce_only":)" +
+      std::string(false ? "true" : "false") + R"(,"time_in_force":")" +
+      time_in_force + R"("}})";
 
-  // Print the serialized JSON
   std::cout << "Serialized JSON:" << std::endl;
   std::cout << json << std::endl;
-  
-  // Print additional details
+
   std::cout << "\nSerialization Details:" << std::endl;
-  std::cout << "Original Buffer Size: " << serialized_json.size() << " bytes" << std::endl;
+  std::cout << "Original Buffer Size: " << serialized_json.size() << " bytes"
+            << std::endl;
   std::cout << "Cleaned JSON Size: " << json.size() << " bytes" << std::endl;
   std::cout << "\nTemplate Size: " << TEMPLATE_SIZE << " bytes" << std::endl;
 }
 
+void demonstrate_cancel_order() {
+  std::cout << "\n=== Cancel Order Serialization Example ===" << std::endl;
+
+  StaticBuffer<4096> buffer;
+  Serializer<StaticBuffer<4096>> serializer(buffer);
+
+  std::string endpoint = "private/cancel";
+  uint64_t request_id = 42;
+  std::string access_token = "sample_access_token_123";
+  std::string order_id = "ETH-281234";
+
+  auto serialized_json = serializer.write<cancel_schema>([&](auto& w) {
+    w.template set<method_place_t>(endpoint);
+    w.template set<request_id_t>(request_id);
+    w.template set<params_t, access_token_t>(access_token);
+    w.template set<params_t, order_id_t>(order_id);
+  });
+
+  std::string json = R"({"jsonrpc":"2.0","method":")" + endpoint +
+                     R"(","id":)" + std::to_string(request_id) +
+                     R"(,"params":{"access_token":")" + access_token +
+                     R"(","order_id":")" + order_id + R"("}})";
+
+  std::cout << "Serialized JSON:" << std::endl;
+  std::cout << json << std::endl;
+
+  std::cout << "\nSerialization Details:" << std::endl;
+  std::cout << "Original Buffer Size: " << serialized_json.size() << " bytes"
+            << std::endl;
+  std::cout << "Cleaned JSON Size: " << json.size() << " bytes" << std::endl;
+}
+
+void demonstrate_edit_order() {
+  std::cout << "\n=== Edit Order Serialization Example ===" << std::endl;
+
+  StaticBuffer<4096> buffer;
+  Serializer<StaticBuffer<4096>> serializer(buffer);
+
+  std::string endpoint = "private/edit";
+  uint64_t request_id = 43;
+  std::string access_token = "sample_access_token_123";
+  std::string order_id = "ETH-281234";
+
+  auto serialized_json = serializer.write<edit_schema>([&](auto& w) {
+    w.template set<method_place_t>(endpoint);
+    w.template set<request_id_t>(request_id);
+    w.template set<params_t, access_token_t>(access_token);
+    w.template set<params_t, order_id_t>(order_id);
+    w.template set<params_t, amount_t>(150.0);
+    w.template set<params_t, price_t>(98765.0);
+    w.template set<params_t, post_only_t>(true);
+    w.template set<params_t, reduce_only_t>(false);
+  });
+
+  std::string json =
+      R"({"jsonrpc":"2.0","method":")" + endpoint + R"(","id":)" +
+      std::to_string(request_id) + R"(,"params":{"access_token":")" +
+      access_token + R"(","order_id":")" + order_id + R"(","amount":)" +
+      std::to_string(150.0) + R"(,"price":)" + std::to_string(98765.0) +
+      R"(,"post_only":)" + std::string(true ? "true" : "false") +
+      R"(,"reduce_only":)" + std::string(false ? "true" : "false") + R"("}})";
+
+  std::cout << "Serialized JSON:" << std::endl;
+  std::cout << json << std::endl;
+
+  std::cout << "\nSerialization Details:" << std::endl;
+  std::cout << "Original Buffer Size: " << serialized_json.size() << " bytes"
+            << std::endl;
+  std::cout << "Cleaned JSON Size: " << json.size() << " bytes" << std::endl;
+}
 
 int main(int argc, char** argv) {
-  // Initialize benchmark
   ::benchmark::Initialize(&argc, argv);
 
-  // Run the benchmarks
   ::benchmark::RunSpecifiedBenchmarks();
 
-  demonstrate_serialization();
+  demonstrate_place_order();
+  demonstrate_cancel_order();
+  demonstrate_edit_order();
 
-  // Generate reports
   ::benchmark::Shutdown();
   return 0;
 }
