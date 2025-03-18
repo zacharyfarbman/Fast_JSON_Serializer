@@ -11,3 +11,6 @@
 /build/
 /bin/
 /dist/
+json_serializer_v1
+json_serializer_v3
+json_serializer_*
