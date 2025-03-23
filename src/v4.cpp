@@ -326,30 +326,26 @@ struct SchemaTraits<edit_schema> {
 template <typename Schema>
 class Writer {
 public:
-    explicit Writer(char* buffer, size_t& size) : buffer_(buffer), size_(size), wrote_jsonrpc_(false), wrote_method_(false), wrote_id_(false), started_params_(false), finished_params_(false) {}
+    explicit Writer(char* buffer, size_t& size) : buffer_(buffer), size_(size), wrote_jsonrpc_(false), wrote_method_(false), wrote_id_(false), started_params_(false), finished_params_(false), first_param_(true) { buffer_[size_++] = '{'; }
 
     template <typename Tag, typename T>
-    FORCE_INLINE void set(const T& value) {
+     FORCE_INLINE void set(const T& value) {
         if constexpr (std::is_same_v<Tag, jsonrpc_t>) {
+            write_kv("jsonrpc", "2.0", true);
             wrote_jsonrpc_ = true;
-            write_field("jsonrpc", value, true);
         } else if constexpr (std::is_same_v<Tag, method_t>) {
+            write_kv("method", value, !wrote_jsonrpc_);
             wrote_method_ = true;
-            write_field("method", value, !wrote_jsonrpc_);
         } else if constexpr (std::is_same_v<Tag, request_id_t>) {
+            write_kv("id", value, !wrote_jsonrpc_ && !wrote_method_);
             wrote_id_ = true;
-            write_field("id", value, !wrote_jsonrpc_ && !wrote_method_);
         }
     }
 
     template <typename ParentTag, typename ChildTag, typename T>
     FORCE_INLINE void set(const T& value) {
         if constexpr (std::is_same_v<ParentTag, params_t>) {
-            if (!started_params_) {
-                add_field_start("params", !wrote_jsonrpc_ && !wrote_method_ && !wrote_id_);
-                started_params_ = true;
-                first_param_ = true;
-            }
+            if (!started_params_) start_params();
             write_field(ChildTag::name, value, first_param_);
             first_param_ = false;
         }
@@ -358,24 +354,51 @@ public:
     FORCE_INLINE size_t finalize() {
         if (started_params_ && !finished_params_) {
             buffer_[size_++] = '}';
-            finished_params_ = true;
         }
         buffer_[size_++] = '}';
         return size_;
     }
 
-private:
-    template <typename T>
-    FORCE_INLINE void write_field(const char* name, const T& value, bool first) {
-        if (size_ == 0) {
-            buffer_[size_++] = '{';
-        }
-        if (!first) {
-            buffer_[size_++] = ',';
-        }
+    template <typename SchemaType>
+    FORCE_INLINE void set_fixed_values() {
+        set<jsonrpc_t>("2.0");
+    }
 
+private:
+    FORCE_INLINE void start_params() {
+        add_comma_if_needed();
+        write_key("params");
+        buffer_[size_++] = '{';
+        started_params_ = true;
+        first_param_ = true;
+    }
+
+    template <typename T>
+    FORCE_INLINE void write_kv(const char* key, const T& value, bool first) {
+        add_comma_if_needed(!first);
+        write_key(key);
+        write_value(value);
+    }
+
+    FORCE_INLINE void write_key(const char* key) {
+        buffer_[size_++] = '"';
+        size_t key_len = strlen(key);
+        memcpy(buffer_ + size_, key, key_len);
+        size_ += key_len;
         buffer_[size_++] = '"';
         buffer_[size_++] = ':';
+    }
+
+    FORCE_INLINE void add_comma_if_needed(bool needed = true) {
+        if (size_ <= 1) return;
+        if (buffer_[size_-1] == '{' || buffer_[size_-1] == '[') return;
+        if (needed) buffer_[size_++] = ',';
+    }
+
+    template <typename T>
+    FORCE_INLINE void write_field(const char* name, const T& value, bool first) {
+        add_comma_if_needed(!first);
+        write_key(name);
         write_value(value);
     }
 
@@ -433,15 +456,10 @@ private:
     }
 
     FORCE_INLINE void write_value(bool value) {
-        if (value) {
-            const char* str = "true";
-            memcpy(buffer_ + size_, str, 4);
-            size_ += 4;
-        } else {
-            const char* str = "false";
-            memcpy(buffer_ + size_, str, 5);
-            size_ += 5;
-        }
+        const char* str = value ? "true" : "false";
+        size_t len = value ? 4 : 5;
+        memcpy(buffer_ + size_, str, len);
+        size_ += len;
     }
 
     char* buffer_;
@@ -461,6 +479,7 @@ struct WriteImpl {
        size_t size = 0;
 
        Writer<Schema> writer(buffer.data(), size);
+       writer.template set_fixed_values<Schema>();
        callback(writer);
        size = writer.finalize();
        buffer.set_size(size);
@@ -524,6 +543,7 @@ void verify_json_serialization() {
         w.template set<params_t, time_in_force_t>(time_in_force);
     });
 
+    std::cout << json << std::endl;
     debug_print_json(json);
 }
 
