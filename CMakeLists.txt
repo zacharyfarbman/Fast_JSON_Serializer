@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.16)
+project(json_serializer)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED on)
+
+set(CMAKE_CXX_COMPILER clang++)
+
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_BUILD_TYPE Release)
+
+include_directories(/usr/locla/include)
+link_directories(/usr/local/lib)
+
+add_executable(json_serializer_v4 src/v4.cpp)
+
+find_package(benchmark REQUIRED)
+target_link_libraries(json_serializer_v4 benchmark::benchmark)

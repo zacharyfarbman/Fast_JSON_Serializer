@@ -6,11 +6,14 @@
 *.so
 *.dll
 *.dylib
+v4.s
 
 # Ignore build directories
 /build/
 /bin/
 /dist/
+/cmake-build-debug/
+/.idea/
 json_serializer_v1
 json_serializer_v3
 json_serializer_*
