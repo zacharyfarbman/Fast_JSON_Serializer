@@ -527,7 +527,6 @@ void verify_json_serialization() {
     debug_print_json(json);
 }
 
-// Updated benchmark function
 static void BM_JsonSerialization(benchmark::State& state) {
     std::string endpoint = "private/buy";
     uint64_t request_id = 17;
@@ -560,13 +559,8 @@ static void BM_JsonSerialization(benchmark::State& state) {
 BENCHMARK(BM_JsonSerialization);
 
 int main(int argc, char** argv) {
-    // Verify JSON serialization before benchmarking
     verify_json_serialization();
-
-    // Run benchmarks
     ::benchmark::Initialize(&argc, argv);
     ::benchmark::RunSpecifiedBenchmarks();
     return 0;
 }
-
-
