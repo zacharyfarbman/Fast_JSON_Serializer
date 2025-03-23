@@ -14,6 +14,7 @@ v4.s
 /dist/
 /cmake-build-debug/
 /.idea/
+/.venv/
 json_serializer_v1
 json_serializer_v3
 json_serializer_*
