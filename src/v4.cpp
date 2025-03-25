@@ -1,10 +1,13 @@
 #include <benchmark/benchmark.h>
 
 #include <cstdint>
-#include <iomanip>
-#include <iostream>
+// #include <iomanip>
+// #include <iostream>
+#include <chrono>
 #include <string>
 #include <string_view>
+#include <vector>
+// #include <algorithm>
 
 using RequestID = std::uint64_t;
 using ClientOrderID = std::uint64_t;
@@ -18,7 +21,7 @@ constexpr int TIF_SIZE = 19;
 #define FORCE_INLINE __attribute__((always_inline)) inline
 
 template <size_t Capacity>
-class StaticBuffer {
+class alignas(64) StaticBuffer {
  public:
   StaticBuffer() : size_(0) {}
 
@@ -36,7 +39,7 @@ class StaticBuffer {
   }
 
  private:
-  char data_[Capacity];
+  alignas(64) char data_[Capacity];
   size_t size_;
 };
 
@@ -370,201 +373,234 @@ class Serializer {
   BufferType& buffer_;
 };
 
-void debug_print_json(sv json) {
-  std::cout << "JSON size: " << json.size() << " bytes" << std::endl;
-  std::cout << "Raw JSON: " << json << std::endl;
+// class LatencyMeasurer {
+// public:
+//   void record(std::chrono::nanoseconds latency) {
+//     measurements_.push_back(latency.count());
+//   }
+//
+//   void report() const {
+//     if (measurements_.empty()) return;
+//
+//     std::vector<int64_t> sorted_measurements = measurements_;
+//     std::sort(sorted_measurements.begin(), sorted_measurements.end());
+//
+//     size_t count = sorted_measurements.size();
+//     auto median = sorted_measurements[count / 2];
+//     auto percentile_0_9 = sorted_measurements[count * 9 / 100];
+//     auto percentile_99 = sorted_measurements[count * 99 / 100];
+//     auto percentile_99_9 = sorted_measurements[count * 999 / 1000];
+//
+//     std::cout << "Latency (ns):\n"
+//               << "  Median: " << median << "\n"
+//               << "  0.9th Percentile: " << percentile_0_9 << "\n"
+//               << "  99th percentile: " << percentile_99 << "\n"
+//               << "  99.9th percentile: " << percentile_99_9 << "\n";
+//   }
+//
+// private:
+//   std::vector<int64_t> measurements_;
+// };
 
-  std::cout << "Character-by-character:" << std::endl;
-  for (size_t i = 0; i < json.size(); i++) {
-    char c = json[i];
-    if (i % 80 == 0) std::cout << std::endl << std::setw(4) << i << ": ";
-
-    if (c == ' ')
-      std::cout << '.';
-    else if (c == '#')
-      std::cout << '#';
-    else
-      std::cout << c;
-  }
-  std::cout << std::endl;
-}
-
-void verify_json_serialization() {
-  StaticBuffer<4096> buffer;
-  Serializer serializer(buffer);
-
-  std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
-  uint64_t request_id = 17;
-
-  std::cout << "\n======== PLACE ORDER TEST ========\n";
-
-  std::string place_endpoint = "private/buy";
-  std::string ticker = "BTC-PERPETUAL";
-  std::string time_in_force = "immediate_or_cancel";
-
-  auto place_json = serializer.write<place_schema>([&](auto& w) {
-    w.template set<method_t>(place_endpoint);
-    w.template set<request_id_t>(request_id);
-    w.template set<params_t, access_token_t>(access_token);
-    w.template set<params_t, instrument_t>(ticker);
-    w.template set<params_t, amount_t>(100.0);
-    w.template set<params_t, label_t>(23);
-    w.template set<params_t, price_t>(99993.0);
-    w.template set<params_t, post_only_t>(true);
-    w.template set<params_t, reject_post_only_t>(false);
-    w.template set<params_t, reduce_only_t>(false);
-    w.template set<params_t, time_in_force_t>(time_in_force);
-  });
-
-  std::cout << place_json << std::endl;
-  debug_print_json(place_json);
-
-  std::cout << "\n======== CANCEL ORDER TEST ========\n";
-
-  buffer.clear();
-
-  std::string cancel_endpoint = "private/cancel";
-  std::string order_id = "ETH-349223";
-
-  auto cancel_json = serializer.write<cancel_schema>([&](auto& w) {
-    w.template set<method_t>(cancel_endpoint);
-    w.template set<request_id_t>(request_id);
-    w.template set<params_t, access_token_t>(access_token);
-    w.template set<params_t, order_id_t>(order_id);
-  });
-
-  std::cout << cancel_json << std::endl;
-  debug_print_json(cancel_json);
-
-  std::cout << "\n======== EDIT ORDER TEST ========\n";
-
-  buffer.clear();
-
-  std::string edit_endpoint = "private/edit";
-  std::string edit_order_id = "BTC-781456";
-
-  auto edit_json = serializer.write<edit_schema>([&](auto& w) {
-    w.template set<method_t>(edit_endpoint);
-    w.template set<request_id_t>(request_id);
-    w.template set<params_t, access_token_t>(access_token);
-    w.template set<params_t, order_id_t>(edit_order_id);
-    w.template set<params_t, amount_t>(75.5);
-    w.template set<params_t, price_t>(98750.0);
-    w.template set<params_t, post_only_t>(false);
-    w.template set<params_t, reduce_only_t>(true);
-  });
-
-  std::cout << edit_json << std::endl;
-  debug_print_json(edit_json);
-}
-
-void verify_json_dynamic_length() {
-  StaticBuffer<4096> buffer;
-  Serializer serializer(buffer);
-
-  std::cout << "\n======== TESTING VARYING PARAMETER LENGTHS ========\n";
-
-  struct TestCase {
-    std::string description;
-    std::string method;
-    uint64_t request_id;
-    std::string access_token;
-    std::string instrument;
-    double amount;
-    uint64_t label;
-    double price;
-    std::string order_id;
-    std::string time_in_force;
-  };
-
-  TestCase test_cases[] = {
-      {
-          "Short values test",
-          "buy",  // Short method
-          1,      // Single digit request ID
-          "tk",   // Very short token
-          "BTC",  // Short instrument
-          0.1,    // Small amount
-          5,      // Small label
-          1.0,    // Small price
-          "A1",   // Very short order ID
-          "ioc"   // Short time_in_force
-      },
-      {
-          "Exactly 12 chars test",  // Some placeholders are 12 characters
-          "private/buy1",           // Exactly 12 chars
-          123456789012,             // 12 digits
-          "token12chars",           // Exactly 12 chars
-          "BTC-123456789",          // Longer instrument
-          12345.67890,              // More decimal places
-          9876543210,               // 10 digits
-          98765.43210,              // More decimal places
-          "ORDER-123456",           // Exactly 12 chars
-          "exactly_twelve"          // Exactly 12 chars
-      },
-      {
-          "Longer values test",
-          "private/buy/extended/endpoint",  // Long method
-          9999999999999999999ULL,           // Very large request ID
-          "this_is_a_very_long_access_token_that_exceeds_the_placeholder_"
-          "length_substantially_to_test_dynamic_sizing",
-          "EXTENDED-INSTRUMENT-NAME-WITH-EXTRA-DETAILS-20230324",  // Long
-                                                                   // instrument
-          123456789.123456789,  // Large amount with many decimals
-          987654321098765ULL,   // Large label
-          9999999.9999999,      // Large price with many decimals
-          "ORDER-ID-WITH-EXTENDED-INFORMATION-12345-ABCDE",  // Long order ID
-          "complex_time_in_force_with_extended_parameters"   // Long
-                                                             // time_in_force
-      }};
-
-  for (const auto& test : test_cases) {
-    std::cout << "\n--- " << test.description << " ---\n";
-
-    std::cout << "Place Order JSON:\n";
-    buffer.clear();
-    auto place_json = serializer.write<place_schema>([&](auto& w) {
-      w.template set<method_t>(test.method);
-      w.template set<request_id_t>(test.request_id);
-      w.template set<params_t, access_token_t>(test.access_token);
-      w.template set<params_t, instrument_t>(test.instrument);
-      w.template set<params_t, amount_t>(test.amount);
-      w.template set<params_t, label_t>(test.label);
-      w.template set<params_t, price_t>(test.price);
-      w.template set<params_t, post_only_t>(true);
-      w.template set<params_t, reject_post_only_t>(false);
-      w.template set<params_t, reduce_only_t>(true);
-      w.template set<params_t, time_in_force_t>(test.time_in_force);
-    });
-    std::cout << place_json << std::endl;
-
-    std::cout << "Cancel Order JSON:\n";
-    buffer.clear();
-    auto cancel_json = serializer.write<cancel_schema>([&](auto& w) {
-      w.template set<method_t>(test.method);
-      w.template set<request_id_t>(test.request_id);
-      w.template set<params_t, access_token_t>(test.access_token);
-      w.template set<params_t, order_id_t>(test.order_id);
-    });
-    std::cout << cancel_json << std::endl;
-
-    std::cout << "Edit Order JSON:\n";
-    buffer.clear();
-    auto edit_json = serializer.write<edit_schema>([&](auto& w) {
-      w.template set<method_t>(test.method);
-      w.template set<request_id_t>(test.request_id);
-      w.template set<params_t, access_token_t>(test.access_token);
-      w.template set<params_t, order_id_t>(test.order_id);
-      w.template set<params_t, amount_t>(test.amount);
-      w.template set<params_t, price_t>(test.price);
-      w.template set<params_t, post_only_t>(true);
-      w.template set<params_t, reduce_only_t>(false);
-    });
-    std::cout << edit_json << std::endl;
-  }
-}
+// void debug_print_json(sv json) {
+//   std::cout << "JSON size: " << json.size() << " bytes" << std::endl;
+//   std::cout << "Raw JSON: " << json << std::endl;
+//
+//   std::cout << "Character-by-character:" << std::endl;
+//   for (size_t i = 0; i < json.size(); i++) {
+//     char c = json[i];
+//     if (i % 80 == 0) std::cout << std::endl << std::setw(4) << i << ": ";
+//
+//     if (c == ' ')
+//       std::cout << '.';
+//     else if (c == '#')
+//       std::cout << '#';
+//     else
+//       std::cout << c;
+//   }
+//   std::cout << std::endl;
+// }
+//
+// void verify_json_serialization() {
+//   StaticBuffer<4096> buffer;
+//   Serializer serializer(buffer);
+//
+//   std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
+//   uint64_t request_id = 17;
+//
+//   std::cout << "\n======== PLACE ORDER TEST ========\n";
+//
+//   std::string place_endpoint = "private/buy";
+//   std::string ticker = "BTC-PERPETUAL";
+//   std::string time_in_force = "immediate_or_cancel";
+//
+//   auto place_json = serializer.write<place_schema>([&](auto& w) {
+//     w.template set<method_t>(place_endpoint);
+//     w.template set<request_id_t>(request_id);
+//     w.template set<params_t, access_token_t>(access_token);
+//     w.template set<params_t, instrument_t>(ticker);
+//     w.template set<params_t, amount_t>(100.0);
+//     w.template set<params_t, label_t>(23);
+//     w.template set<params_t, price_t>(99993.0);
+//     w.template set<params_t, post_only_t>(true);
+//     w.template set<params_t, reject_post_only_t>(false);
+//     w.template set<params_t, reduce_only_t>(false);
+//     w.template set<params_t, time_in_force_t>(time_in_force);
+//   });
+//
+//   std::cout << place_json << std::endl;
+//   debug_print_json(place_json);
+//
+//   std::cout << "\n======== CANCEL ORDER TEST ========\n";
+//
+//   buffer.clear();
+//
+//   std::string cancel_endpoint = "private/cancel";
+//   std::string order_id = "ETH-349223";
+//
+//   auto cancel_json = serializer.write<cancel_schema>([&](auto& w) {
+//     w.template set<method_t>(cancel_endpoint);
+//     w.template set<request_id_t>(request_id);
+//     w.template set<params_t, access_token_t>(access_token);
+//     w.template set<params_t, order_id_t>(order_id);
+//   });
+//
+//   std::cout << cancel_json << std::endl;
+//   debug_print_json(cancel_json);
+//
+//   std::cout << "\n======== EDIT ORDER TEST ========\n";
+//
+//   buffer.clear();
+//
+//   std::string edit_endpoint = "private/edit";
+//   std::string edit_order_id = "BTC-781456";
+//
+//   auto edit_json = serializer.write<edit_schema>([&](auto& w) {
+//     w.template set<method_t>(edit_endpoint);
+//     w.template set<request_id_t>(request_id);
+//     w.template set<params_t, access_token_t>(access_token);
+//     w.template set<params_t, order_id_t>(edit_order_id);
+//     w.template set<params_t, amount_t>(75.5);
+//     w.template set<params_t, price_t>(98750.0);
+//     w.template set<params_t, post_only_t>(false);
+//     w.template set<params_t, reduce_only_t>(true);
+//   });
+//
+//   std::cout << edit_json << std::endl;
+//   debug_print_json(edit_json);
+// }
+//
+// void verify_json_dynamic_length() {
+//   StaticBuffer<4096> buffer;
+//   Serializer serializer(buffer);
+//
+//   std::cout << "\n======== TESTING VARYING PARAMETER LENGTHS ========\n";
+//
+//   struct TestCase {
+//     std::string description;
+//     std::string method;
+//     uint64_t request_id;
+//     std::string access_token;
+//     std::string instrument;
+//     double amount;
+//     uint64_t label;
+//     double price;
+//     std::string order_id;
+//     std::string time_in_force;
+//   };
+//
+//   TestCase test_cases[] = {
+//       {
+//           "Short values test",
+//           "buy",  // Short method
+//           1,      // Single digit request ID
+//           "tk",   // Very short token
+//           "BTC",  // Short instrument
+//           0.1,    // Small amount
+//           5,      // Small label
+//           1.0,    // Small price
+//           "A1",   // Very short order ID
+//           "ioc"   // Short time_in_force
+//       },
+//       {
+//           "Exactly 12 chars test",  // Some placeholders are 12 characters
+//           "private/buy1",           // Exactly 12 chars
+//           123456789012,             // 12 digits
+//           "token12chars",           // Exactly 12 chars
+//           "BTC-123456789",          // Longer instrument
+//           12345.67890,              // More decimal places
+//           9876543210,               // 10 digits
+//           98765.43210,              // More decimal places
+//           "ORDER-123456",           // Exactly 12 chars
+//           "exactly_twelve"          // Exactly 12 chars
+//       },
+//       {
+//           "Longer values test",
+//           "private/buy/extended/endpoint",  // Long method
+//           9999999999999999999ULL,           // Very large request ID
+//           "this_is_a_very_long_access_token_that_exceeds_the_placeholder_"
+//           "length_substantially_to_test_dynamic_sizing",
+//           "EXTENDED-INSTRUMENT-NAME-WITH-EXTRA-DETAILS-20230324",  // Long
+//                                                                    // instrument
+//           123456789.123456789,  // Large amount with many decimals
+//           987654321098765ULL,   // Large label
+//           9999999.9999999,      // Large price with many decimals
+//           "ORDER-ID-WITH-EXTENDED-INFORMATION-12345-ABCDE",  // Long order ID
+//           "complex_time_in_force_with_extended_parameters"   // Long
+//                                                              // time_in_force
+//       }};
+//
+//   for (const auto& test : test_cases) {
+//     std::cout << "\n--- " << test.description << " ---\n";
+//
+//     std::cout << "Place Order JSON:\n";
+//     buffer.clear();
+//     auto place_json = serializer.write<place_schema>([&](auto& w) {
+//       w.template set<method_t>(test.method);
+//       w.template set<request_id_t>(test.request_id);
+//       w.template set<params_t, access_token_t>(test.access_token);
+//       w.template set<params_t, instrument_t>(test.instrument);
+//       w.template set<params_t, amount_t>(test.amount);
+//       w.template set<params_t, label_t>(test.label);
+//       w.template set<params_t, price_t>(test.price);
+//       w.template set<params_t, post_only_t>(true);
+//       w.template set<params_t, reject_post_only_t>(false);
+//       w.template set<params_t, reduce_only_t>(true);
+//       w.template set<params_t, time_in_force_t>(test.time_in_force);
+//     });
+//     std::cout << place_json << std::endl;
+//
+//     std::cout << "Cancel Order JSON:\n";
+//     buffer.clear();
+//     auto cancel_json = serializer.write<cancel_schema>([&](auto& w) {
+//       w.template set<method_t>(test.method);
+//       w.template set<request_id_t>(test.request_id);
+//       w.template set<params_t, access_token_t>(test.access_token);
+//       w.template set<params_t, order_id_t>(test.order_id);
+//     });
+//     std::cout << cancel_json << std::endl;
+//
+//     std::cout << "Edit Order JSON:\n";
+//     buffer.clear();
+//     auto edit_json = serializer.write<edit_schema>([&](auto& w) {
+//       w.template set<method_t>(test.method);
+//       w.template set<request_id_t>(test.request_id);
+//       w.template set<params_t, access_token_t>(test.access_token);
+//       w.template set<params_t, order_id_t>(test.order_id);
+//       w.template set<params_t, amount_t>(test.amount);
+//       w.template set<params_t, price_t>(test.price);
+//       w.template set<params_t, post_only_t>(true);
+//       w.template set<params_t, reduce_only_t>(false);
+//     });
+//     std::cout << edit_json << std::endl;
+//   }
+// }
 
 static void BM_PlaceOrderSerialization(benchmark::State& state) {
+  StaticBuffer<4096> buffer;
+  Serializer serializer(buffer);
+  // LatencyMeasurer latency_measurer;
+
   std::string endpoint = "private/buy";
   uint64_t request_id = 17;
   std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
@@ -572,10 +608,9 @@ static void BM_PlaceOrderSerialization(benchmark::State& state) {
   std::string time_in_force = "immediate_or_cancel";
 
   for (auto _ : state) {
-    StaticBuffer<4096> buffer;
-    Serializer serializer(buffer);
+    // auto start = std::chrono::high_resolution_clock::now();
 
-    auto json = serializer.write<place_schema>([&](auto& w) {
+    serializer.write<place_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
       w.template set<request_id_t>(request_id);
       w.template set<params_t, access_token_t>(access_token);
@@ -589,28 +624,34 @@ static void BM_PlaceOrderSerialization(benchmark::State& state) {
       w.template set<params_t, time_in_force_t>(time_in_force);
     });
 
-    benchmark::DoNotOptimize(json);
+    // auto end = std::chrono::high_resolution_clock::now();
+    // latency_measurer.record(end - start);
+
+    benchmark::DoNotOptimize(buffer.data());
+    benchmark::DoNotOptimize(buffer);
   }
+  // latency_measurer.report();
 }
 
 static void BM_CancelOrderSerialization(benchmark::State& state) {
+  StaticBuffer<4096> buffer;
+  Serializer serializer(buffer);
+
   std::string endpoint = "private/cancel";
   uint64_t request_id = 17;
   std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
   std::string order_id = "ETH-349223";
 
   for (auto _ : state) {
-    StaticBuffer<4096> buffer;
-    Serializer serializer(buffer);
-
-    auto json = serializer.write<cancel_schema>([&](auto& w) {
+    serializer.write<cancel_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
       w.template set<request_id_t>(request_id);
       w.template set<params_t, access_token_t>(access_token);
       w.template set<params_t, order_id_t>(order_id);
     });
 
-    benchmark::DoNotOptimize(json);
+    benchmark::DoNotOptimize(buffer.data());
+    benchmark::DoNotOptimize(buffer);
   }
 }
 
@@ -825,8 +866,8 @@ BENCHMARK(BM_BufferRecreate);
 BENCHMARK(BM_BatchOrders)->Range(1, 1 << 10);
 
 int main(int argc, char** argv) {
-  verify_json_serialization();
-  verify_json_dynamic_length();
+  // verify_json_serialization();
+  // verify_json_dynamic_length();
   ::benchmark::Initialize(&argc, argv);
   ::benchmark::RunSpecifiedBenchmarks();
   return 0;
