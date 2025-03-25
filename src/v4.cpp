@@ -391,7 +391,7 @@ void debug_print_json(sv json) {
 
 void verify_json_serialization() {
   StaticBuffer<4096> buffer;
-  Serializer<StaticBuffer<4096>> serializer(buffer);
+  Serializer serializer(buffer);
 
   std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
   uint64_t request_id = 17;
@@ -460,7 +460,7 @@ void verify_json_serialization() {
 
 void verify_json_dynamic_length() {
   StaticBuffer<4096> buffer;
-  Serializer<StaticBuffer<4096>> serializer(buffer);
+  Serializer serializer(buffer);
 
   std::cout << "\n======== TESTING VARYING PARAMETER LENGTHS ========\n";
 
@@ -573,7 +573,7 @@ static void BM_PlaceOrderSerialization(benchmark::State& state) {
 
   for (auto _ : state) {
     StaticBuffer<4096> buffer;
-    Serializer<StaticBuffer<4096>> serializer(buffer);
+    Serializer serializer(buffer);
 
     auto json = serializer.write<place_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
@@ -601,7 +601,7 @@ static void BM_CancelOrderSerialization(benchmark::State& state) {
 
   for (auto _ : state) {
     StaticBuffer<4096> buffer;
-    Serializer<StaticBuffer<4096>> serializer(buffer);
+    Serializer serializer(buffer);
 
     auto json = serializer.write<cancel_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
@@ -622,7 +622,7 @@ static void BM_EditOrderSerialization(benchmark::State& state) {
 
   for (auto _ : state) {
     StaticBuffer<4096> buffer;
-    Serializer<StaticBuffer<4096>> serializer(buffer);
+    Serializer serializer(buffer);
 
     auto json = serializer.write<edit_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
@@ -648,7 +648,7 @@ static void BM_StringLengthImpact(benchmark::State& state) {
 
   for (auto _ : state) {
     StaticBuffer<8192> buffer;
-    Serializer<StaticBuffer<8192>> serializer(buffer);
+    Serializer serializer(buffer);
 
     auto json = serializer.write<place_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
@@ -689,7 +689,7 @@ static void BM_NumericPrecisionImpact(benchmark::State& state) {
 
   for (auto _ : state) {
     StaticBuffer<4096> buffer;
-    Serializer<StaticBuffer<4096>> serializer(buffer);
+    Serializer serializer(buffer);
 
     auto json = serializer.write<place_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
@@ -712,7 +712,7 @@ static void BM_NumericPrecisionImpact(benchmark::State& state) {
 
 static void BM_BufferReuse(benchmark::State& state) {
   StaticBuffer<4096> buffer;
-  Serializer<StaticBuffer<4096>> serializer(buffer);
+  Serializer serializer(buffer);
 
   std::string endpoint = "private/buy";
   uint64_t request_id = 17;
@@ -750,7 +750,7 @@ static void BM_BufferRecreate(benchmark::State& state) {
 
   for (auto _ : state) {
     StaticBuffer<4096> buffer;
-    Serializer<StaticBuffer<4096>> serializer(buffer);
+    Serializer serializer(buffer);
 
     auto json = serializer.write<place_schema>([&](auto& w) {
       w.template set<method_t>(endpoint);
@@ -784,7 +784,7 @@ static void BM_BatchOrders(benchmark::State& state) {
   }
 
   StaticBuffer<65536> buffer;
-  Serializer<StaticBuffer<65536>> serializer(buffer);
+  Serializer serializer(buffer);
 
   for (auto _ : state) {
     std::vector<sv> results;
