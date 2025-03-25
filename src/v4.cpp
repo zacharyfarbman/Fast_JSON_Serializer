@@ -639,9 +639,190 @@ static void BM_EditOrderSerialization(benchmark::State& state) {
   }
 }
 
+static void BM_StringLengthImpact(benchmark::State& state) {
+  std::string access_token(state.range(0), 'a');
+  uint64_t request_id = 17;
+  std::string endpoint = "private/buy";
+  std::string ticker = "BTC-PERPETUAL";
+  std::string time_in_force = "immediate_or_cancel";
+
+  for (auto _ : state) {
+    StaticBuffer<8192> buffer;
+    Serializer<StaticBuffer<8192>> serializer(buffer);
+
+    auto json = serializer.write<place_schema>([&](auto& w) {
+      w.template set<method_t>(endpoint);
+      w.template set<request_id_t>(request_id);
+      w.template set<params_t, access_token_t>(access_token);
+      w.template set<params_t, instrument_t>(ticker);
+      w.template set<params_t, amount_t>(100.0);
+      w.template set<params_t, label_t>(23);
+      w.template set<params_t, price_t>(99993.0);
+      w.template set<params_t, post_only_t>(true);
+      w.template set<params_t, reject_post_only_t>(false);
+      w.template set<params_t, reduce_only_t>(false);
+      w.template set<params_t, time_in_force_t>(time_in_force);
+    });
+
+    benchmark::DoNotOptimize(json);
+  }
+
+  state.SetItemsProcessed(state.iterations() * state.range(0));
+  state.SetLabel(std::to_string(state.range(0)) + " chars");
+}
+
+static void BM_NumericPrecisionImpact(benchmark::State& state) {
+  int precision = state.range(0);
+
+  double price = 99990.0;
+  double fraction = 0.0;
+
+  for (int i = 1; i <= precision; i++) {
+    fraction += (9.0 / std::pow(10, i));  // Add 0.9, 0.09, 0.009, etc.
+  }
+  price += fraction;
+
+  uint64_t request_id = 17;
+  std::string access_token = "token";
+  std::string endpoint = "private/buy";
+  std::string ticker = "BTC-PERPETUAL";
+
+  for (auto _ : state) {
+    StaticBuffer<4096> buffer;
+    Serializer<StaticBuffer<4096>> serializer(buffer);
+
+    auto json = serializer.write<place_schema>([&](auto& w) {
+      w.template set<method_t>(endpoint);
+      w.template set<request_id_t>(request_id);
+      w.template set<params_t, access_token_t>(access_token);
+      w.template set<params_t, instrument_t>(ticker);
+      w.template set<params_t, amount_t>(100.0);
+      w.template set<params_t, label_t>(23);
+      w.template set<params_t, price_t>(price);
+      w.template set<params_t, post_only_t>(true);
+      w.template set<params_t, reject_post_only_t>(false);
+      w.template set<params_t, reduce_only_t>(false);
+    });
+
+    benchmark::DoNotOptimize(json);
+  }
+
+  state.SetLabel(std::to_string(precision) + " decimal places");
+}
+
+static void BM_BufferReuse(benchmark::State& state) {
+  StaticBuffer<4096> buffer;
+  Serializer<StaticBuffer<4096>> serializer(buffer);
+
+  std::string endpoint = "private/buy";
+  uint64_t request_id = 17;
+  std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
+  std::string ticker = "BTC-PERPETUAL";
+  std::string time_in_force = "immediate_or_cancel";
+
+  for (auto _ : state) {
+    buffer.clear();
+
+    auto json = serializer.write<place_schema>([&](auto& w) {
+      w.template set<method_t>(endpoint);
+      w.template set<request_id_t>(request_id);
+      w.template set<params_t, access_token_t>(access_token);
+      w.template set<params_t, instrument_t>(ticker);
+      w.template set<params_t, amount_t>(100.0);
+      w.template set<params_t, label_t>(23);
+      w.template set<params_t, price_t>(99993.0);
+      w.template set<params_t, post_only_t>(true);
+      w.template set<params_t, reject_post_only_t>(false);
+      w.template set<params_t, reduce_only_t>(false);
+      w.template set<params_t, time_in_force_t>(time_in_force);
+    });
+
+    benchmark::DoNotOptimize(json);
+  }
+}
+
+static void BM_BufferRecreate(benchmark::State& state) {
+  std::string endpoint = "private/buy";
+  uint64_t request_id = 17;
+  std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
+  std::string ticker = "BTC-PERPETUAL";
+  std::string time_in_force = "immediate_or_cancel";
+
+  for (auto _ : state) {
+    StaticBuffer<4096> buffer;
+    Serializer<StaticBuffer<4096>> serializer(buffer);
+
+    auto json = serializer.write<place_schema>([&](auto& w) {
+      w.template set<method_t>(endpoint);
+      w.template set<request_id_t>(request_id);
+      w.template set<params_t, access_token_t>(access_token);
+      w.template set<params_t, instrument_t>(ticker);
+      w.template set<params_t, amount_t>(100.0);
+      w.template set<params_t, label_t>(23);
+      w.template set<params_t, price_t>(99993.0);
+      w.template set<params_t, post_only_t>(true);
+      w.template set<params_t, reject_post_only_t>(false);
+      w.template set<params_t, reduce_only_t>(false);
+      w.template set<params_t, time_in_force_t>(time_in_force);
+    });
+
+    benchmark::DoNotOptimize(json);
+  }
+}
+
+static void BM_BatchOrders(benchmark::State& state) {
+  int batch_size = state.range(0);
+
+  std::string endpoint = "private/buy";
+  std::string access_token = "thisismyreallylongaccesstokenstoredontheheap";
+  std::string ticker = "BTC-PERPETUAL";
+  std::string time_in_force = "immediate_or_cancel";
+
+  std::vector<uint64_t> request_ids(batch_size);
+  for (int i = 0; i < batch_size; i++) {
+    request_ids[i] = 1000 + i;
+  }
+
+  StaticBuffer<65536> buffer;
+  Serializer<StaticBuffer<65536>> serializer(buffer);
+
+  for (auto _ : state) {
+    std::vector<sv> results;
+    results.reserve(batch_size);
+
+    for (int i = 0; i < batch_size; i++) {
+      buffer.clear();
+
+      auto json = serializer.write<place_schema>([&](auto& w) {
+        w.template set<method_t>(endpoint);
+        w.template set<request_id_t>(request_ids[i]);
+        w.template set<params_t, access_token_t>(access_token);
+        w.template set<params_t, instrument_t>(ticker);
+        w.template set<params_t, amount_t>(100.0 + i);
+        w.template set<params_t, label_t>(23 + i);
+        w.template set<params_t, price_t>(99990.0 + i);
+        w.template set<params_t, post_only_t>(i % 2 == 0);
+        w.template set<params_t, reject_post_only_t>(i % 3 == 0);
+        w.template set<params_t, reduce_only_t>(i % 4 == 0);
+        w.template set<params_t, time_in_force_t>(time_in_force);
+      });
+
+      benchmark::DoNotOptimize(json);
+    }
+  }
+
+  state.SetItemsProcessed(state.iterations() * batch_size);
+  state.SetLabel(std::to_string(batch_size) + " orders");
+}
+
 BENCHMARK(BM_PlaceOrderSerialization);
 BENCHMARK(BM_CancelOrderSerialization);
 BENCHMARK(BM_EditOrderSerialization);
+BENCHMARK(BM_StringLengthImpact)->Range(8, 1 << 12);
+BENCHMARK(BM_NumericPrecisionImpact)->DenseRange(0, 9, 1);
+BENCHMARK(BM_BufferReuse);
+BENCHMARK(BM_BufferRecreate);
+BENCHMARK(BM_BatchOrders)->Range(1, 1 << 10);
 
 int main(int argc, char** argv) {
   verify_json_serialization();
