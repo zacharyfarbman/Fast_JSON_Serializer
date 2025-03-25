@@ -7,6 +7,7 @@
 *.dll
 *.dylib
 v4.s
+.clang-format
 
 # Ignore build directories
 /build/
@@ -15,6 +16,7 @@ v4.s
 /cmake-build-debug/
 /.idea/
 /.venv/
+
 json_serializer_v1
 json_serializer_v3
 json_serializer_*
