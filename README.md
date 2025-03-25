@@ -19,4 +19,11 @@ clang++ -std=c++23 -O3 src/v4.cpp -lbenchmark -o json_serializer_v4
 # If you experience an error with linking the benchmark library add:
 -I/usr/local/include -L/usr/local/lib
 # to the compile flags
+
+# if building with cmake:
+mkdir build
+cd build
+cmake .
+cmake --build .
+./json_serializer_v4
 ```
