@@ -114,46 +114,6 @@ template <typename... Fields>
 struct object {};
 }  // namespace schema
 
-struct FieldOffset {
-  size_t offset;
-  size_t size;
-};
-
-constexpr char PLACE_TEMPLATE[] =
-    R"({"jsonrpc":"2.0","method":"############","id":############,"params":{"access_token":"############","instrument_name":"############","amount":############,"label":############,"price":############,"post_only":############,"reject_post_only":############,"reduce_only":############,"time_in_force":"############"}})";
-
-constexpr size_t PLACE_TEMPLATE_SIZE = sizeof(PLACE_TEMPLATE) - 1;
-
-constexpr char CANCEL_TEMPLATE[] =
-    R"({"jsonrpc":"2.0","method":"############","id":############,"params":{"access_token":"############","order_id":"############"}})";
-
-constexpr size_t CANCEL_TEMPLATE_SIZE = sizeof(CANCEL_TEMPLATE) - 1;
-
-constexpr char EDIT_TEMPLATE[] =
-    R"({"jsonrpc":"2.0","method":"############","id":############,"params":{"access_token":"############","order_id":"############","amount":############,"price":############,"post_only":############,"reduce_only":############}})";
-
-constexpr size_t EDIT_TEMPLATE_SIZE = sizeof(EDIT_TEMPLATE) - 1;
-
-constexpr FieldOffset METHOD_OFFSET = {26, 12};
-constexpr FieldOffset ID_OFFSET = {45, 12};
-constexpr FieldOffset ACCESS_TOKEN_OFFSET = {84, 12};
-constexpr FieldOffset INSTRUMENT_OFFSET = {120, 14};
-constexpr FieldOffset AMOUNT_OFFSET = {146, 13};
-constexpr FieldOffset LABEL_OFFSET = {168, 13};
-constexpr FieldOffset PRICE_OFFSET = {190, 13};
-constexpr FieldOffset POST_ONLY_OFFSET = {217, 13};
-constexpr FieldOffset REJECT_POST_ONLY_OFFSET = {250, 13};
-constexpr FieldOffset REDUCE_ONLY_OFFSET = {281, 13};
-constexpr FieldOffset TIME_IN_FORCE_OFFSET = {311, 14};
-
-constexpr FieldOffset CANCEL_ORDER_ID_OFFSET = {115, 12};
-
-constexpr FieldOffset EDIT_ORDER_ID_OFFSET = {115, 12};
-constexpr FieldOffset EDIT_AMOUNT_OFFSET = {141, 12};
-constexpr FieldOffset EDIT_PRICE_OFFSET = {162, 12};
-constexpr FieldOffset EDIT_POST_ONLY_OFFSET = {188, 12};
-constexpr FieldOffset EDIT_REDUCE_ONLY_OFFSET = {216, 12};
-
 template <typename T>
 FORCE_INLINE int int_to_str(char* buffer, T value) {
   if (value == 0) {
@@ -242,105 +202,6 @@ using edit_schema = schema::object<
             schema::key_value<reduce_only_t, schema::boolean>>>>;
 
 template <typename Schema>
-struct SchemaTraits {
-  static constexpr const char* get_template() { return PLACE_TEMPLATE; }
-
-  static constexpr size_t get_template_size() { return PLACE_TEMPLATE_SIZE; }
-
-  template <typename ParentTag, typename ChildTag>
-  static constexpr FieldOffset get_nested_offset() {
-    if constexpr (std::is_same_v<ParentTag, params_t>) {
-      if constexpr (std::is_same_v<ChildTag, access_token_t>) {
-        return ACCESS_TOKEN_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, instrument_t>) {
-        return INSTRUMENT_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, amount_t>) {
-        return AMOUNT_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, label_t>) {
-        return LABEL_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, price_t>) {
-        return PRICE_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, post_only_t>) {
-        return POST_ONLY_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, reject_post_only_t>) {
-        return REJECT_POST_ONLY_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, reduce_only_t>) {
-        return REDUCE_ONLY_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, time_in_force_t>) {
-        return TIME_IN_FORCE_OFFSET;
-      } else {
-        static_assert(!std::is_same_v<ParentTag, params_t>,
-                      "Unsupported child tag for params in place_schema");
-        return {0, 0};
-      }
-    } else {
-      static_assert(!std::is_same_v<ParentTag, params_t>,
-                    "Unsupported parent tag for place_schema");
-      return {0, 0};
-    }
-  }
-};
-
-template <>
-struct SchemaTraits<cancel_schema> {
-  static constexpr const char* get_template() { return CANCEL_TEMPLATE; }
-  static constexpr size_t get_template_size() { return CANCEL_TEMPLATE_SIZE; }
-
-  template <typename ParentTag, typename ChildTag>
-  static constexpr FieldOffset get_nested_offset() {
-    if constexpr (std::is_same_v<ParentTag, params_t>) {
-      if constexpr (std::is_same_v<ChildTag, access_token_t>) {
-        return ACCESS_TOKEN_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, order_id_t>) {
-        return CANCEL_ORDER_ID_OFFSET;
-      } else {
-        static_assert(!std::is_same_v<ParentTag, params_t>,
-                      "Unsupported child tag for params in cancel_schema");
-        return {0, 0};
-      }
-    } else {
-      static_assert(!std::is_same_v<ParentTag, params_t>,
-                    "Unsupported parent tag for cancel_schema");
-      return {0, 0};
-    }
-  }
-};
-
-template <>
-struct SchemaTraits<edit_schema> {
-  static constexpr const char* get_template() { return EDIT_TEMPLATE; }
-
-  static constexpr size_t get_template_size() { return EDIT_TEMPLATE_SIZE; }
-
-  template <typename ParentTag, typename ChildTag>
-  static constexpr FieldOffset get_nested_offset() {
-    if constexpr (std::is_same_v<ParentTag, params_t>) {
-      if constexpr (std::is_same_v<ChildTag, access_token_t>) {
-        return ACCESS_TOKEN_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, order_id_t>) {
-        return EDIT_ORDER_ID_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, amount_t>) {
-        return EDIT_AMOUNT_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, price_t>) {
-        return EDIT_PRICE_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, post_only_t>) {
-        return EDIT_POST_ONLY_OFFSET;
-      } else if constexpr (std::is_same_v<ChildTag, reduce_only_t>) {
-        return EDIT_REDUCE_ONLY_OFFSET;
-      } else {
-        static_assert(!std::is_same_v<ParentTag, params_t>,
-                      "Unsupported child tag for params in edit_schema");
-        return {0, 0};
-      }
-    } else {
-      static_assert(!std::is_same_v<ParentTag, params_t>,
-                    "Unsupported parent tag for edit_schema");
-      return {0, 0};
-    }
-  }
-};
-
-template <typename Schema>
 class Writer {
  public:
   explicit Writer(char* buffer, size_t& size)
@@ -350,7 +211,6 @@ class Writer {
         wrote_method_(false),
         wrote_id_(false),
         started_params_(false),
-        finished_params_(false),
         first_param_(true) {
     buffer_[size_++] = '{';
   }
@@ -379,7 +239,7 @@ class Writer {
   }
 
   FORCE_INLINE size_t finalize() {
-    if (started_params_ && !finished_params_) {
+    if (started_params_) {
       buffer_[size_++] = '}';
     }
     buffer_[size_++] = '}';
@@ -476,7 +336,6 @@ class Writer {
   bool wrote_method_;
   bool wrote_id_;
   bool started_params_;
-  bool finished_params_;
   bool first_param_;
 };
 
