@@ -13,8 +13,6 @@ include_directories(/usr/local/include)
 link_directories(/usr/local/lib)
 
 add_executable(json_serializer_v4 src/v4.cpp)
-add_executable(json_serializer_v3 src/v3.cpp)
 
 find_package(benchmark REQUIRED)
 target_link_libraries(json_serializer_v4 benchmark)
-target_link_libraries(json_serializer_v3 benchmark)

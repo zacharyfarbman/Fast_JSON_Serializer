@@ -8,6 +8,8 @@
 #include <string_view>
 // #include <vector>
 // #include <algorithm>
+#include <cstring>
+#include <cmath>
 
 using RequestID = std::uint64_t;
 using ClientOrderID = std::uint64_t;
