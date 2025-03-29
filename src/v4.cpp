@@ -249,10 +249,10 @@ class Writer {
     return size_;
   }
 
-  // template <typename SchemaType>
-  // FORCE_INLINE void set_fixed_values() {
-  //   set<jsonrpc_t>("2.0");
-  // }
+  template <typename SchemaType>
+  FORCE_INLINE void set_fixed_values() {
+    set<jsonrpc_t>("2.0");
+  }
 
  private:
   FORCE_INLINE void start_params() {
@@ -349,7 +349,7 @@ struct WriteImpl {
     size_t size = 0;
 
     Writer<Schema> writer(buffer.data(), size);
-    // writer.template set_fixed_values<Schema>();
+    writer.template set_fixed_values<Schema>();
     callback(writer);
     size = writer.finalize();
     buffer.set_size(size);
@@ -430,13 +430,11 @@ void verify_json_serialization() {
 
   std::cout << "\n======== PLACE ORDER TEST ========\n";
 
-  std::string place_api = "jsonrpc";
   std::string place_endpoint = "private/buy";
   std::string ticker = "BTC-PERPETUAL";
   std::string time_in_force = "immediate_or_cancel";
 
   auto place_json = serializer.write<place_schema>([&](auto& w) {
-    w.template set<jsonrpc_t>(place_api);
     w.template set<method_t>(place_endpoint);
     w.template set<request_id_t>(request_id);
     w.template set<params_t, access_token_t>(access_token);
@@ -457,12 +455,10 @@ void verify_json_serialization() {
 
   buffer.clear();
 
-  std::string cancel_api = "jsonrpc";
   std::string cancel_endpoint = "private/cancel";
   std::string order_id = "ETH-349223";
 
   auto cancel_json = serializer.write<cancel_schema>([&](auto& w) {
-    w.template set<jsonrpc_t>(cancel_api);
     w.template set<method_t>(cancel_endpoint);
     w.template set<request_id_t>(request_id);
     w.template set<params_t, access_token_t>(access_token);
@@ -476,12 +472,10 @@ void verify_json_serialization() {
 
   buffer.clear();
 
-  std::string edit_api = "jsonrpc";
   std::string edit_endpoint = "private/edit";
   std::string edit_order_id = "BTC-781456";
 
   auto edit_json = serializer.write<edit_schema>([&](auto& w) {
-    w.template set<jsonrpc_t>(edit_api);
     w.template set<method_t>(edit_endpoint);
     w.template set<request_id_t>(request_id);
     w.template set<params_t, access_token_t>(access_token);
@@ -547,8 +541,7 @@ void verify_json_serialization() {
 //           "this_is_a_very_long_access_token_that_exceeds_the_placeholder_"
 //           "length_substantially_to_test_dynamic_sizing",
 //           "EXTENDED-INSTRUMENT-NAME-WITH-EXTRA-DETAILS-20230324",  // Long
-//                                                                    //
-//                                                                    instrument
+//                                                                    // instrument
 //           123456789.123456789,  // Large amount with many decimals
 //           987654321098765ULL,   // Large label
 //           9999999.9999999,      // Large price with many decimals
